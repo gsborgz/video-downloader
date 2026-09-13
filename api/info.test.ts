@@ -1,13 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { VideoMeta } from "../lib/yt-dlp";
+import type { VideoMeta } from "../lib/yt-dlp.js";
 
 const getVideoMetaMock = vi.fn<(url: string) => Promise<VideoMeta>>();
-vi.mock("../lib/yt-dlp", () => ({
+vi.mock("../lib/yt-dlp.js", () => ({
   getVideoMeta: (url: string) => getVideoMetaMock(url),
 }));
 
-import handler from "./info";
+import handler from "./info.js";
 
 function makeReq(method: string, body?: unknown): IncomingMessage {
   const raw = body === undefined ? "" : JSON.stringify(body);

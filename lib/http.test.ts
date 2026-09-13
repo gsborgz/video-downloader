@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { readJsonBody, sendJson } from "./http";
+import { readJsonBody, sendJson } from "./http.js";
 
 function makeReq(chunks: string[]): IncomingMessage {
   return {

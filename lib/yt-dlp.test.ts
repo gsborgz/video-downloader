@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { getVideoMeta, downloadVideo, pickPreviewHeight, type RawFormat } from "./yt-dlp";
+import { getVideoMeta, downloadVideo, pickPreviewHeight, type RawFormat } from "./yt-dlp.js";
 
 // child_process.execFile is mocked at the Node callback level (not via util.promisify's
 // special custom hook) to match how lib/yt-dlp.ts's own execFileAsync wrapper calls it.

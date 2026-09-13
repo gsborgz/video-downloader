@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isSupportedVideoUrl } from "./video-url";
+import { isSupportedVideoUrl } from "./video-url.js";
 
 describe("isSupportedVideoUrl", () => {
   it.each([

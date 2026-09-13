@@ -6,10 +6,12 @@
     "types": ["node"],
     "skipLibCheck": true,
 
-    /* Bundler mode (these files are compiled by Vercel/Vite at build or dev time, not by tsc) */
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
+    /* Node ESM mode: Vercel runs these as native Node ESM modules (no bundling step),
+       which requires explicit ".js" extensions on relative imports even though the
+       source files are .ts — nodenext enforces that at compile time instead of only
+       finding out at deploy time. */
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,

@@ -8,11 +8,11 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 // Only the expensive part (spawning yt-dlp/ffmpeg) is mocked; it writes a small real
 // file so the surrounding streaming/cleanup logic in the handler runs for real.
 const downloadVideoMock = vi.fn<(url: string, outputPath: string) => Promise<void>>();
-vi.mock("../lib/yt-dlp", () => ({
+vi.mock("../lib/yt-dlp.js", () => ({
   downloadVideo: (url: string, outputPath: string) => downloadVideoMock(url, outputPath),
 }));
 
-import handler from "./download";
+import handler from "./download.js";
 
 type FakeRes = PassThrough & { writeHead: ReturnType<typeof vi.fn> };
 

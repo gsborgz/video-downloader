@@ -1,7 +1,11 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import ffmpegPath from "ffmpeg-static";
+// ffmpeg-static is a CommonJS package whose .d.ts (a plain "export default") doesn't
+// resolve cleanly under "moduleResolution": "nodenext" — TS infers the whole module
+// namespace instead of the declared string type, so it's cast back explicitly here.
+import ffmpegPathImport from "ffmpeg-static";
+const ffmpegPath = ffmpegPathImport as unknown as string | null;
 
 // A thin, explicit Promise wrapper instead of util.promisify(execFile): promisify relies
 // on child_process's special promisify.custom hook (returning {stdout, stderr}) which a

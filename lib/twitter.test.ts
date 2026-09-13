@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isTwitterStatusUrl } from "./twitter";
+import { isTwitterStatusUrl } from "./twitter.js";
 
 describe("isTwitterStatusUrl", () => {
   it.each([

@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { isSupportedVideoUrl } from "../lib/video-url";
-import { getVideoMeta } from "../lib/yt-dlp";
-import { readJsonBody, sendJson } from "../lib/http";
+import { isSupportedVideoUrl } from "../lib/video-url.js";
+import { getVideoMeta } from "../lib/yt-dlp.js";
+import { readJsonBody, sendJson } from "../lib/http.js";
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   if (req.method !== "POST") {

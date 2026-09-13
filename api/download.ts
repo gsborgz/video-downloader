@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { isSupportedVideoUrl } from "../lib/video-url";
-import { downloadVideo } from "../lib/yt-dlp";
-import { sendJson } from "../lib/http";
+import { isSupportedVideoUrl } from "../lib/video-url.js";
+import { downloadVideo } from "../lib/yt-dlp.js";
+import { sendJson } from "../lib/http.js";
 
 function safeFilename(raw: string | null): string {
   const base =

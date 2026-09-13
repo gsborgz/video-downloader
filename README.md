@@ -20,6 +20,12 @@ Vite é um bundler de frontend — ele não executa processos do servidor. Baixa
 
 O `vite.config.ts` tem um plugin (`apiRoutesDevMiddleware`) que intercepta `/api/info` e `/api/download` no próprio dev server do Vite e chama os handlers de `api/*.ts` diretamente (via `server.ssrLoadModule`). Ou seja, `npm run dev` já sobe frontend + backend juntos, com hot reload, sem precisar instalar/logar na Vercel CLI. Esse plugin só existe para o ambiente de desenvolvimento — em produção, a própria Vercel detecta e executa os arquivos de `api/` automaticamente.
 
+### Pegadinha: imports relativos em `api/` e `lib/` precisam de `.js` no final
+
+A Vercel roda cada arquivo de `api/*.ts` como um módulo ES nativo do Node (sem empacotar tudo num único arquivo), e o resolvedor de módulos ESM do Node exige a extensão explícita mesmo quando o import aponta pra um arquivo `.ts` — ex: `import { x } from "../lib/foo.js"` dentro de um arquivo `.ts`, não `"../lib/foo"`. Isso funciona porque o TypeScript entende esse `.js` como referência ao `.ts` correspondente na hora de checar tipos (é o modelo padrão de projetos ESM/`nodenext`), mas localmente com Vite (que empacota tudo e resolve extensões sozinho) o erro não aparece — só estoura em produção, como um `ERR_MODULE_NOT_FOUND` na function.
+
+O `tsconfig.api.json` usa `"moduleResolution": "nodenext"` exatamente para pegar isso em tempo de build (`npm run build`/`tsc -b` já reclama se faltar a extensão em algum import novo dentro de `api/` ou `lib/`), então não devia mais quebrar silenciosamente — mas vale lembrar ao criar um novo arquivo em `lib/` ou uma nova function em `api/`.
+
 ## yt-dlp e ffmpeg
 
 O binário standalone do `yt-dlp` é baixado automaticamente pelo script `scripts/download-yt-dlp.mjs`, disparado pelo hook `postinstall` do `npm install`. Ele detecta a plataforma (`win32`, `linux`, `darwin`) e baixa o executável certo para `./bin/`. Isso significa que:
