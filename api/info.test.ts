@@ -2,9 +2,10 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { VideoMeta } from "../lib/yt-dlp.js";
 
-const getVideoMetaMock = vi.fn<(url: string) => Promise<VideoMeta>>();
+const getVideoMetaMock = vi.fn<(url: string, cookies?: string) => Promise<VideoMeta>>();
 vi.mock("../lib/yt-dlp.js", () => ({
-  getVideoMeta: (url: string) => getVideoMetaMock(url),
+  getVideoMeta: (url: string, cookies?: string) => getVideoMetaMock(url, cookies),
+  MAX_COOKIES_LENGTH: 32 * 1024,
 }));
 
 import handler from "./info.js";
@@ -74,7 +75,7 @@ describe("POST /api/info", () => {
     const res = makeRes();
     await handler(makeReq("POST", { url: "https://x.com/a/status/1" }), res);
 
-    expect(getVideoMetaMock).toHaveBeenCalledWith("https://x.com/a/status/1");
+    expect(getVideoMetaMock).toHaveBeenCalledWith("https://x.com/a/status/1", undefined);
     expect(res.writeHead).toHaveBeenCalledWith(200, expect.anything());
     expect(jsonOf(res)).toEqual({ video: meta });
   });
@@ -86,8 +87,38 @@ describe("POST /api/info", () => {
     const res = makeRes();
     await handler(makeReq("POST", { url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" }), res);
 
-    expect(getVideoMetaMock).toHaveBeenCalledWith("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    expect(getVideoMetaMock).toHaveBeenCalledWith("https://www.youtube.com/watch?v=dQw4w9WgXcQ", undefined);
     expect(res.writeHead).toHaveBeenCalledWith(200, expect.anything());
+  });
+
+  it("passes pasted cookies through to getVideoMeta", async () => {
+    const meta: VideoMeta = { id: "1", title: "A video", thumbnail: null, duration: 10, height: 720 };
+    getVideoMetaMock.mockResolvedValue(meta);
+
+    const res = makeRes();
+    await handler(
+      makeReq("POST", { url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", cookies: "# cookie data" }),
+      res,
+    );
+
+    expect(getVideoMetaMock).toHaveBeenCalledWith("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "# cookie data");
+  });
+
+  it("rejects non-string cookies", async () => {
+    const res = makeRes();
+    await handler(makeReq("POST", { url: "https://www.youtube.com/watch?v=1", cookies: 123 }), res);
+    expect(res.writeHead).toHaveBeenCalledWith(400, expect.anything());
+    expect(getVideoMetaMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects cookies over the size limit", async () => {
+    const res = makeRes();
+    await handler(
+      makeReq("POST", { url: "https://www.youtube.com/watch?v=1", cookies: "x".repeat(40_000) }),
+      res,
+    );
+    expect(res.writeHead).toHaveBeenCalledWith(400, expect.anything());
+    expect(getVideoMetaMock).not.toHaveBeenCalled();
   });
 
   it("returns a 502 when yt-dlp fails", async () => {

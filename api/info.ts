@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { isSupportedVideoUrl } from "../lib/video-url.js";
-import { getVideoMeta } from "../lib/yt-dlp.js";
+import { getVideoMeta, MAX_COOKIES_LENGTH } from "../lib/yt-dlp.js";
 import { readJsonBody, sendJson } from "../lib/http.js";
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
@@ -26,8 +26,19 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     return;
   }
 
+  const rawCookies = typeof body === "object" && body !== null ? (body as { cookies?: unknown }).cookies : undefined;
+  if (rawCookies !== undefined && typeof rawCookies !== "string") {
+    sendJson(res, 400, { error: "Cookies inválidos." });
+    return;
+  }
+  if (typeof rawCookies === "string" && rawCookies.length > MAX_COOKIES_LENGTH) {
+    sendJson(res, 400, { error: "Cookies muito grandes." });
+    return;
+  }
+  const cookies = rawCookies || undefined;
+
   try {
-    const video = await getVideoMeta(url);
+    const video = await getVideoMeta(url, cookies);
     sendJson(res, 200, { video });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erro desconhecido.";

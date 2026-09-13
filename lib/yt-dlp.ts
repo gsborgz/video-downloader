@@ -1,5 +1,8 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
+import { writeFile, unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 // ffmpeg-static is a CommonJS package whose .d.ts (a plain "export default") doesn't
 // resolve cleanly under "moduleResolution": "nodenext" — TS infers the whole module
@@ -26,6 +29,26 @@ function execFileAsync(
   });
 }
 
+// Writes the (optional) Netscape-format cookies.txt content the user pasted in to a
+// short-lived temp file so it can be passed to yt-dlp via --cookies, then always
+// deletes it afterwards — this data never lives on disk longer than a single request.
+async function withCookiesFile<T>(
+  cookiesText: string | undefined,
+  fn: (cookiesPath: string | null) => Promise<T>,
+): Promise<T> {
+  if (!cookiesText) return fn(null);
+
+  const cookiesPath = path.join(tmpdir(), `video-downloader-cookies-${randomUUID()}.txt`);
+  await writeFile(cookiesPath, cookiesText, "utf8");
+  try {
+    return await fn(cookiesPath);
+  } finally {
+    await unlink(cookiesPath).catch(() => {});
+  }
+}
+
+export const MAX_COOKIES_LENGTH = 32 * 1024;
+
 const MAX_HEIGHT = 720;
 // Prefer a single progressive mp4 (already muxed) when the site offers one; otherwise
 // fall back to merging the best video-only + audio-only streams (yt-dlp calls ffmpeg
@@ -35,33 +58,6 @@ const MAX_HEIGHT = 720;
 // excluded from a [height<=N] filter entirely, so the chain ends with unfiltered
 // fallbacks to still get *something* playable for those.
 const FORMAT_SELECTOR = `best[ext=mp4][height<=${MAX_HEIGHT}]/bestvideo[ext=mp4][height<=${MAX_HEIGHT}]+bestaudio[ext=m4a]/best[height<=${MAX_HEIGHT}]/best[ext=mp4]/best`;
-
-// YouTube increasingly requires a "Sign in to confirm you're not a bot" check for the
-// default "web" client, especially from datacenter IPs (which is what Vercel's
-// serverless functions use). Other player clients (mobile apps, TV) usually aren't
-// gated the same way, but also expose far fewer/lower-res formats (often just a single
-// old-style 360p file) — so we only reach for them as a fallback *after* the normal,
-// unrestricted request actually hits that specific bot check, instead of always paying
-// the quality cost up front. A no-op for non-YouTube URLs (e.g. Twitter/X).
-const YOUTUBE_EXTRACTOR_ARGS = ["--extractor-args", "youtube:player_client=android,tv,ios"];
-const BOT_CHECK_PATTERN = /sign in to confirm you.?re not a bot/i;
-
-async function runYtDlpWithFallback(
-  binPath: string,
-  baseArgs: string[],
-  videoUrl: string,
-  options: { maxBuffer: number; timeout: number },
-): Promise<{ stdout: string; stderr: string }> {
-  try {
-    return await execFileAsync(binPath, [...baseArgs, videoUrl], options);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (!BOT_CHECK_PATTERN.test(message)) {
-      throw err;
-    }
-    return execFileAsync(binPath, [...baseArgs, ...YOUTUBE_EXTRACTOR_ARGS, videoUrl], options);
-  }
-}
 
 function resolveYtDlpPath(): string {
   const binName = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
@@ -96,13 +92,23 @@ export interface VideoMeta {
   height: number | null;
 }
 
-async function getFirstInfo(videoUrl: string): Promise<RawInfo> {
+async function getFirstInfo(videoUrl: string, cookiesText?: string): Promise<RawInfo> {
   const binPath = resolveYtDlpPath();
-  const { stdout } = await runYtDlpWithFallback(
-    binPath,
-    ["-j", "--no-warnings", "--no-playlist", "--playlist-items", "1"],
-    videoUrl,
-    { maxBuffer: 1024 * 1024 * 20, timeout: 30_000 },
+
+  const { stdout } = await withCookiesFile(cookiesText, (cookiesPath) =>
+    execFileAsync(
+      binPath,
+      [
+        "-j",
+        "--no-warnings",
+        "--no-playlist",
+        "--playlist-items",
+        "1",
+        ...(cookiesPath ? ["--cookies", cookiesPath] : []),
+        videoUrl,
+      ],
+      { maxBuffer: 1024 * 1024 * 20, timeout: 30_000 },
+    ),
   );
 
   // A tweet with several attached videos (or a playlist/channel link) makes yt-dlp print
@@ -134,8 +140,8 @@ export function pickPreviewHeight(formats: RawFormat[]): number | null {
   return null;
 }
 
-export async function getVideoMeta(videoUrl: string): Promise<VideoMeta> {
-  const info = await getFirstInfo(videoUrl);
+export async function getVideoMeta(videoUrl: string, cookiesText?: string): Promise<VideoMeta> {
+  const info = await getFirstInfo(videoUrl, cookiesText);
 
   return {
     id: info.id,
@@ -146,31 +152,38 @@ export async function getVideoMeta(videoUrl: string): Promise<VideoMeta> {
   };
 }
 
-export async function downloadVideo(videoUrl: string, outputPath: string): Promise<void> {
+export async function downloadVideo(
+  videoUrl: string,
+  outputPath: string,
+  cookiesText?: string,
+): Promise<void> {
   const binPath = resolveYtDlpPath();
   if (!ffmpegPath) {
     throw new Error("ffmpeg binary not found (ffmpeg-static did not resolve a path).");
   }
 
-  await runYtDlpWithFallback(
-    binPath,
-    [
-      "-f",
-      FORMAT_SELECTOR,
-      "--merge-output-format",
-      "mp4",
-      "--ffmpeg-location",
-      ffmpegPath,
-      "--no-playlist",
-      "--playlist-items",
-      "1",
-      "--no-warnings",
-      "--no-progress",
-      "-o",
-      outputPath,
-    ],
-    videoUrl,
-    { maxBuffer: 1024 * 1024 * 20, timeout: 55_000 },
+  await withCookiesFile(cookiesText, (cookiesPath) =>
+    execFileAsync(
+      binPath,
+      [
+        "-f",
+        FORMAT_SELECTOR,
+        "--merge-output-format",
+        "mp4",
+        "--ffmpeg-location",
+        ffmpegPath,
+        "--no-playlist",
+        "--playlist-items",
+        "1",
+        "--no-warnings",
+        "--no-progress",
+        ...(cookiesPath ? ["--cookies", cookiesPath] : []),
+        "-o",
+        outputPath,
+        videoUrl,
+      ],
+      { maxBuffer: 1024 * 1024 * 20, timeout: 55_000 },
+    ),
   );
 
   if (!existsSync(outputPath)) {

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
 import { getVideoMeta, downloadVideo, pickPreviewHeight, type RawFormat } from "./yt-dlp.js";
 
 // child_process.execFile is mocked at the Node callback level (not via util.promisify's
@@ -112,33 +113,24 @@ describe("getVideoMeta", () => {
     await expect(getVideoMeta("https://x.com/a/status/1")).rejects.toThrow(/No video could be found/);
   });
 
-  it("retries with alternate player clients when YouTube's bot check blocks the default request", async () => {
-    let call = 0;
-    execFileMock.mockImplementation((_file, args, _options, callback) => {
-      call += 1;
-      if (call === 1) {
-        callback(
-          new Error(
-            "ERROR: [youtube] dQw4w9WgXcQ: Sign in to confirm you're not a bot. Use --cookies-from-browser...",
-          ),
-        );
-        return;
-      }
-      expect(args).toContain("--extractor-args");
-      callback(null, JSON.stringify({ id: "dQw4w9WgXcQ", title: "Never Gonna Give You Up", formats: [] }), "");
+  it("propagates YouTube's bot-check failure as-is", async () => {
+    execFileMock.mockImplementation((_file, _args, _options, callback) => {
+      callback(
+        new Error("ERROR: [youtube] dQw4w9WgXcQ: Sign in to confirm you're not a bot. Use --cookies-from-browser..."),
+      );
     });
 
-    const result = await getVideoMeta("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
-    expect(result.title).toBe("Never Gonna Give You Up");
-    expect(execFileMock).toHaveBeenCalledTimes(2);
+    await expect(getVideoMeta("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).rejects.toThrow(/not a bot/);
+    expect(execFileMock).toHaveBeenCalledTimes(1);
   });
 
-  it("does not retry for unrelated failures", async () => {
-    execFileMock.mockImplementation((_file, _args, _options, callback) => {
-      callback(new Error("ERROR: [youtube] dQw4w9WgXcQ: Video unavailable"));
+  it("passes pasted cookies through to yt-dlp via --cookies", async () => {
+    execFileMock.mockImplementation((_file, args: string[], _options, callback) => {
+      expect(args).toContain("--cookies");
+      callback(null, JSON.stringify({ id: "1", formats: [] }), "");
     });
 
-    await expect(getVideoMeta("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).rejects.toThrow(/Video unavailable/);
+    await getVideoMeta("https://www.youtube.com/watch?v=1", "# cookies");
     expect(execFileMock).toHaveBeenCalledTimes(1);
   });
 });
@@ -174,5 +166,35 @@ describe("downloadVideo", () => {
 
     const [, args] = execFileMock.mock.calls[0] as [string, string[]];
     expect(args).toContain("https://youtube.com/watch?v=dQw4w9WgXcQ");
+  });
+
+  it("does not pass --cookies when none were provided", async () => {
+    execFileMock.mockImplementation((_file, _args, _options, callback) => callback(null, "", ""));
+
+    await downloadVideo("https://x.com/a/status/1", "/tmp/out.mp4");
+
+    const [, args] = execFileMock.mock.calls[0] as [string, string[]];
+    expect(args).not.toContain("--cookies");
+  });
+
+  it("writes pasted cookies to a temp file, passes --cookies, and deletes it afterwards", async () => {
+    let cookiesPathSeen: string | null = null;
+    let cookiesContentSeen: string | null = null;
+    execFileMock.mockImplementation((_file, args: string[], _options, callback) => {
+      const idx = args.indexOf("--cookies");
+      if (idx !== -1) {
+        cookiesPathSeen = args[idx + 1];
+        cookiesContentSeen = readFileSync(cookiesPathSeen, "utf8");
+      }
+      callback(null, "", "");
+    });
+
+    await downloadVideo("https://www.youtube.com/watch?v=1", "/tmp/out.mp4", "# Netscape HTTP Cookie File\nfoo\tbar");
+
+    expect(cookiesPathSeen).not.toBeNull();
+    expect(cookiesContentSeen).toBe("# Netscape HTTP Cookie File\nfoo\tbar");
+    // existsSync is globally mocked to true in this file, so cleanup is verified by
+    // trying to actually read the file back from the real filesystem instead.
+    expect(() => readFileSync(cookiesPathSeen as string, "utf8")).toThrow();
   });
 });
