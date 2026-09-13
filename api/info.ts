@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { isTwitterStatusUrl } from "../lib/twitter";
+import { isSupportedVideoUrl } from "../lib/video-url";
 import { getVideoMeta } from "../lib/yt-dlp";
 import { readJsonBody, sendJson } from "../lib/http";
 
@@ -18,9 +18,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   }
 
   const url = typeof body === "object" && body !== null ? (body as { url?: unknown }).url : undefined;
-  if (typeof url !== "string" || !isTwitterStatusUrl(url)) {
+  if (typeof url !== "string" || !isSupportedVideoUrl(url)) {
     sendJson(res, 400, {
-      error: "Informe um link válido de um post do Twitter/X (ex: https://x.com/usuario/status/123).",
+      error:
+        "Informe um link válido de um post do Twitter/X ou de um vídeo do YouTube (ex: https://x.com/usuario/status/123 ou https://youtube.com/watch?v=abc).",
     });
     return;
   }

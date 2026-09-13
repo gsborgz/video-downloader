@@ -25,10 +25,7 @@ describe("<App />", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.type(
-      screen.getByPlaceholderText(/x.com\/usuario\/status/i),
-      "https://x.com/SpaceX/status/1",
-    );
+    await user.type(screen.getByRole("textbox"), "https://x.com/SpaceX/status/1");
     await user.click(screen.getByRole("button", { name: /gerar vídeo/i }));
 
     expect(await screen.findByText("A rocket launch")).toBeTruthy();
@@ -53,7 +50,7 @@ describe("<App />", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.type(screen.getByPlaceholderText(/x.com\/usuario\/status/i), "https://example.com");
+    await user.type(screen.getByRole("textbox"), "https://example.com");
     await user.click(screen.getByRole("button", { name: /gerar vídeo/i }));
 
     expect(await screen.findByText("Link de tweet inválido.")).toBeTruthy();
@@ -66,7 +63,7 @@ describe("<App />", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.type(screen.getByPlaceholderText(/x.com\/usuario\/status/i), "https://x.com/a/status/1");
+    await user.type(screen.getByRole("textbox"), "https://x.com/a/status/1");
     await user.click(screen.getByRole("button", { name: /gerar vídeo/i }));
 
     await waitFor(() => expect(screen.getByText("network down")).toBeTruthy());

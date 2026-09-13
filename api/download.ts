@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { isTwitterStatusUrl } from "../lib/twitter";
-import { downloadTweetVideo } from "../lib/yt-dlp";
+import { isSupportedVideoUrl } from "../lib/video-url";
+import { downloadVideo } from "../lib/yt-dlp";
 import { sendJson } from "../lib/http";
 
 function safeFilename(raw: string | null): string {
@@ -24,15 +24,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const url = searchParams.get("url");
   const name = searchParams.get("name");
 
-  if (!url || !isTwitterStatusUrl(url)) {
-    sendJson(res, 400, { error: "Link de tweet inválido." });
+  if (!url || !isSupportedVideoUrl(url)) {
+    sendJson(res, 400, { error: "Link inválido." });
     return;
   }
 
   const outputPath = path.join(tmpdir(), `video-downloader-${randomUUID()}.mp4`);
 
   try {
-    await downloadTweetVideo(url, outputPath);
+    await downloadVideo(url, outputPath);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erro desconhecido.";
     sendJson(res, 502, { error: message });

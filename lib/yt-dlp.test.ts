@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { getVideoMeta, downloadTweetVideo, pickPreviewHeight, type RawFormat } from "./yt-dlp";
+import { getVideoMeta, downloadVideo, pickPreviewHeight, type RawFormat } from "./yt-dlp";
 
 // child_process.execFile is mocked at the Node callback level (not via util.promisify's
 // special custom hook) to match how lib/yt-dlp.ts's own execFileAsync wrapper calls it.
@@ -113,7 +113,7 @@ describe("getVideoMeta", () => {
   });
 });
 
-describe("downloadTweetVideo", () => {
+describe("downloadVideo", () => {
   beforeEach(() => {
     execFileMock.mockReset();
   });
@@ -123,7 +123,7 @@ describe("downloadTweetVideo", () => {
       callback(null, "", "");
     });
 
-    await downloadTweetVideo("https://x.com/a/status/1", "/tmp/out.mp4");
+    await downloadVideo("https://x.com/a/status/1", "/tmp/out.mp4");
 
     expect(execFileMock).toHaveBeenCalledTimes(1);
     const [, args] = execFileMock.mock.calls[0] as [string, string[]];
@@ -133,5 +133,16 @@ describe("downloadTweetVideo", () => {
     expect(args).toContain("-o");
     expect(args).toContain("/tmp/out.mp4");
     expect(args).toContain("https://x.com/a/status/1");
+  });
+
+  it("works the same way for a YouTube URL", async () => {
+    execFileMock.mockImplementation((_file, _args, _options, callback) => {
+      callback(null, "", "");
+    });
+
+    await downloadVideo("https://youtube.com/watch?v=dQw4w9WgXcQ", "/tmp/out.mp4");
+
+    const [, args] = execFileMock.mock.calls[0] as [string, string[]];
+    expect(args).toContain("https://youtube.com/watch?v=dQw4w9WgXcQ");
   });
 });

@@ -42,9 +42,9 @@ describe("POST /api/info", () => {
     expect(res.writeHead).toHaveBeenCalledWith(405, expect.anything());
   });
 
-  it("rejects a missing or invalid tweet URL", async () => {
+  it("rejects a missing or unsupported video URL", async () => {
     const res = makeRes();
-    await handler(makeReq("POST", { url: "https://youtube.com/watch?v=1" }), res);
+    await handler(makeReq("POST", { url: "https://vimeo.com/12345" }), res);
     expect(res.writeHead).toHaveBeenCalledWith(400, expect.anything());
     expect(getVideoMetaMock).not.toHaveBeenCalled();
   });
@@ -77,6 +77,17 @@ describe("POST /api/info", () => {
     expect(getVideoMetaMock).toHaveBeenCalledWith("https://x.com/a/status/1");
     expect(res.writeHead).toHaveBeenCalledWith(200, expect.anything());
     expect(jsonOf(res)).toEqual({ video: meta });
+  });
+
+  it("accepts a YouTube URL too", async () => {
+    const meta: VideoMeta = { id: "1", title: "A video", thumbnail: null, duration: 10, height: 720 };
+    getVideoMetaMock.mockResolvedValue(meta);
+
+    const res = makeRes();
+    await handler(makeReq("POST", { url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" }), res);
+
+    expect(getVideoMetaMock).toHaveBeenCalledWith("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    expect(res.writeHead).toHaveBeenCalledWith(200, expect.anything());
   });
 
   it("returns a 502 when yt-dlp fails", async () => {

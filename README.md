@@ -1,6 +1,6 @@
-# Baixador de vídeos do X/Twitter
+# Baixador de vídeos do X/Twitter e YouTube
 
-App em Vite + React (TypeScript) para baixar vídeos de posts de plataformas sociais, sempre limitado a até 720p. Frontend estático + funções serverless da Vercel, sem framework de servidor (Next etc.).
+App em Vite + React (TypeScript) para baixar vídeos do X/Twitter e do YouTube em MP4, sempre limitado a até 720p. Frontend estático + funções serverless da Vercel, sem framework de servidor (Next etc.).
 
 ## Arquitetura
 
@@ -8,9 +8,9 @@ App em Vite + React (TypeScript) para baixar vídeos de posts de plataformas soc
 - **Backend**: duas [Vercel Functions](https://vercel.com/docs/functions) puras (sem framework), em `api/`:
   - `POST /api/info` — roda o [yt-dlp](https://github.com/yt-dlp/yt-dlp) (`-j`, só metadados) para mostrar uma prévia: título, thumbnail, duração e a resolução que será usada.
   - `GET /api/download` — roda o yt-dlp de verdade, baixando o melhor formato ≤ 720p para um arquivo temporário e servindo-o ao navegador com `Content-Disposition: attachment`. O arquivo temporário é apagado assim que o download termina.
-- **Lógica compartilhada**: `lib/twitter.ts` (validação de URL) e `lib/yt-dlp.ts` (chamadas ao binário) são usados pelas duas functions.
+- **Lógica compartilhada**: `lib/twitter.ts` e `lib/youtube.ts` validam a URL de cada plataforma (`lib/video-url.ts` combina as duas), e `lib/yt-dlp.ts` (chamadas ao binário) é o mesmo código de download para ambas — o yt-dlp já suporta os dois sites nativamente, então adicionar YouTube não exigiu nenhuma lógica de download nova, só uma validação de URL a mais.
 
-Vídeos "nativos" do Twitter (não GIFs) costumam ser servidos como streams HLS separados de vídeo e áudio — nesse caso o yt-dlp usa o `ffmpeg` para juntar os dois antes de entregar o MP4 final. Quando o Twitter já oferece um MP4 progressivo (vídeo+áudio combinados) na resolução certa, esse passo de merge é pulado automaticamente.
+Vídeos "nativos" do Twitter (não GIFs) e do YouTube costumam ser servidos como streams separados de vídeo e áudio (HLS/DASH) — nesse caso o yt-dlp usa o `ffmpeg` para juntar os dois antes de entregar o MP4 final. Quando a plataforma já oferece um MP4 progressivo (vídeo+áudio combinados) na resolução certa, esse passo de merge é pulado automaticamente.
 
 ### Por que não dá pra fazer só com Vite
 
@@ -53,7 +53,7 @@ npm run test:watch  # modo watch
 
 O que é coberto:
 
-- `lib/twitter.test.ts` — validação de URL (aceita `x.com`/`twitter.com`, rejeita domínios parecidos/spoofing).
+- `lib/twitter.test.ts` e `lib/youtube.test.ts` — validação de URL de cada plataforma (aceita as variações reais, rejeita domínios parecidos/spoofing); `lib/video-url.test.ts` testa o combinador das duas.
 - `lib/http.test.ts` — leitura de body JSON e helper de resposta usados pelas functions.
 - `lib/yt-dlp.test.ts` — a parte mais importante: parsing da saída do yt-dlp mockando `child_process` (não chama o binário real nem a internet), cobrindo os casos que já pegamos na prática: tweet com várias resoluções (capado em 720p), clipe tipo GIF sem metadado de resolução, tweet com mais de um vídeo (JSON delimitado por linha) e falha do yt-dlp.
 - `api/info.test.ts` e `api/download.test.ts` — as duas functions com `lib/yt-dlp` mockado, verificando validação de entrada, códigos de status, headers (`Content-Disposition`, `Content-Length`) e que o arquivo temporário é apagado depois do streaming.
@@ -72,5 +72,6 @@ Basta importar o repositório na Vercel normalmente — ela detecta o Vite autom
 ### Limitações conhecidas
 
 - `/api/download` está configurado com `maxDuration = 60` segundos (via `vercel.json`). No plano Hobby da Vercel esse é o teto; em planos pagos dá para aumentar se vídeos maiores começarem a estourar o tempo.
-- Vídeos de tweets costumam ser curtos (o Twitter limita a 140s para contas gratuitas), então o tempo de download+merge normalmente fica na casa de poucos segundos.
-- Por enquanto, suporta apenas links de `twitter.com`/`x.com`.
+- Vídeos de tweets costumam ser curtos (o Twitter limita a 140s para contas gratuitas), então o tempo de download+merge normalmente fica na casa de poucos segundos. Vídeos do YouTube podem ser bem mais longos — um vídeo de 30+ minutos pode não terminar de baixar dentro do limite de 60s no plano Hobby.
+- O YouTube às vezes bloqueia/limita requisições vindas de IPs de datacenter (é o caso das funções serverless da Vercel) pedindo confirmação de "não sou um robô". Isso é um comportamento do lado do YouTube, fora do nosso controle — funcionou nos testes manuais feitos durante o desenvolvimento, mas pode variar dependendo da região/IP de saída da Vercel no momento do deploy.
+- Por enquanto, suporta apenas links de `twitter.com`/`x.com` e `youtube.com`/`youtu.be`.

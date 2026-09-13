@@ -59,10 +59,10 @@ export default function App() {
       <main className="flex w-full max-w-xl flex-col gap-8 px-6 py-20">
         <div className="flex flex-col gap-2 text-center">
           <h1 className="text-2xl font-semibold tracking-tight text-black dark:text-zinc-50">
-            Baixador de vídeos do X/Twitter
+            Baixador de vídeos do X/Twitter e YouTube
           </h1>
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            Cole o link do post, gere o MP4 (até 720p) e baixe.
+            Cole o link do post ou do vídeo, gere o MP4 (até 720p) e baixe.
           </p>
         </div>
 
@@ -70,7 +70,7 @@ export default function App() {
           <input
             type="url"
             required
-            placeholder="https://x.com/usuario/status/1234567890"
+            placeholder="https://x.com/usuario/status/... ou https://youtube.com/watch?v=..."
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             className="flex-1 rounded-lg border border-zinc-300 bg-white px-4 py-3 text-sm text-black outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"

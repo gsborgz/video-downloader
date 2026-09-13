@@ -23,12 +23,13 @@ function execFileAsync(
 }
 
 const MAX_HEIGHT = 720;
-// Prefer a single progressive mp4 (already muxed) when Twitter offers one; otherwise
+// Prefer a single progressive mp4 (already muxed) when the site offers one; otherwise
 // fall back to merging the best video-only + audio-only streams (yt-dlp calls ffmpeg
-// for that, via --ffmpeg-location below).
-// yt-dlp excludes formats with no "height" field from a [height<=N] filter entirely
-// (e.g. GIF-derived clips report no resolution at all), so the chain ends with
-// unfiltered fallbacks to still get *something* playable for those.
+// for that, via --ffmpeg-location below) — this is the common case for YouTube and for
+// Twitter's "amplify_video" (non-GIF) uploads, which serve video/audio as separate HLS
+// or DASH streams. Formats with no "height" field (e.g. Twitter's GIF-derived clips) are
+// excluded from a [height<=N] filter entirely, so the chain ends with unfiltered
+// fallbacks to still get *something* playable for those.
 const FORMAT_SELECTOR = `best[ext=mp4][height<=${MAX_HEIGHT}]/bestvideo[ext=mp4][height<=${MAX_HEIGHT}]+bestaudio[ext=m4a]/best[height<=${MAX_HEIGHT}]/best[ext=mp4]/best`;
 
 function resolveYtDlpPath(): string {
@@ -64,16 +65,17 @@ export interface VideoMeta {
   height: number | null;
 }
 
-async function getFirstInfo(tweetUrl: string): Promise<RawInfo> {
+async function getFirstInfo(videoUrl: string): Promise<RawInfo> {
   const binPath = resolveYtDlpPath();
   const { stdout } = await execFileAsync(
     binPath,
-    ["-j", "--no-warnings", "--no-playlist", "--playlist-items", "1", tweetUrl],
+    ["-j", "--no-warnings", "--no-playlist", "--playlist-items", "1", videoUrl],
     { maxBuffer: 1024 * 1024 * 20, timeout: 30_000 },
   );
 
-  // A tweet with several attached videos makes yt-dlp print one JSON object per line
-  // (newline-delimited) even with --no-playlist. We only care about the first video.
+  // A tweet with several attached videos (or a playlist/channel link) makes yt-dlp print
+  // one JSON object per line (newline-delimited) even with --no-playlist. We only care
+  // about the first video.
   const [info] = stdout
     .split("\n")
     .map((line) => line.trim())
@@ -81,14 +83,14 @@ async function getFirstInfo(tweetUrl: string): Promise<RawInfo> {
     .map((line) => JSON.parse(line) as RawInfo);
 
   if (!info) {
-    throw new Error("Nenhum vídeo foi encontrado nesse tweet.");
+    throw new Error("Nenhum vídeo foi encontrado nesse link.");
   }
   return info;
 }
 
 // Best-effort resolution estimate for the preview card. Some formats omit vcodec
-// entirely despite being real video (e.g. GIF-derived clips) — only exclude when
-// it's explicitly "none" (audio-only). Exported standalone so the edge cases (GIF
+// entirely despite being real video (e.g. Twitter's GIF-derived clips) — only exclude
+// when it's explicitly "none" (audio-only). Exported standalone so the edge cases (GIF
 // clips with no height data, videos only available above 720p) are easy to unit test.
 export function pickPreviewHeight(formats: RawFormat[]): number | null {
   const heights = formats
@@ -100,8 +102,8 @@ export function pickPreviewHeight(formats: RawFormat[]): number | null {
   return null;
 }
 
-export async function getVideoMeta(tweetUrl: string): Promise<VideoMeta> {
-  const info = await getFirstInfo(tweetUrl);
+export async function getVideoMeta(videoUrl: string): Promise<VideoMeta> {
+  const info = await getFirstInfo(videoUrl);
 
   return {
     id: info.id,
@@ -112,7 +114,7 @@ export async function getVideoMeta(tweetUrl: string): Promise<VideoMeta> {
   };
 }
 
-export async function downloadTweetVideo(tweetUrl: string, outputPath: string): Promise<void> {
+export async function downloadVideo(videoUrl: string, outputPath: string): Promise<void> {
   const binPath = resolveYtDlpPath();
   if (!ffmpegPath) {
     throw new Error("ffmpeg binary not found (ffmpeg-static did not resolve a path).");
@@ -134,7 +136,7 @@ export async function downloadTweetVideo(tweetUrl: string, outputPath: string): 
       "--no-progress",
       "-o",
       outputPath,
-      tweetUrl,
+      videoUrl,
     ],
     { maxBuffer: 1024 * 1024 * 20, timeout: 55_000 },
   );

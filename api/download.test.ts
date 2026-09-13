@@ -7,9 +7,9 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 // Only the expensive part (spawning yt-dlp/ffmpeg) is mocked; it writes a small real
 // file so the surrounding streaming/cleanup logic in the handler runs for real.
-const downloadTweetVideoMock = vi.fn<(url: string, outputPath: string) => Promise<void>>();
+const downloadVideoMock = vi.fn<(url: string, outputPath: string) => Promise<void>>();
 vi.mock("../lib/yt-dlp", () => ({
-  downloadTweetVideo: (url: string, outputPath: string) => downloadTweetVideoMock(url, outputPath),
+  downloadVideo: (url: string, outputPath: string) => downloadVideoMock(url, outputPath),
 }));
 
 import handler from "./download";
@@ -39,20 +39,38 @@ async function collect(stream: PassThrough): Promise<Buffer> {
 
 describe("GET /api/download", () => {
   beforeEach(() => {
-    downloadTweetVideoMock.mockReset();
+    downloadVideoMock.mockReset();
   });
 
-  it("rejects a missing or invalid tweet URL without touching yt-dlp", async () => {
+  it("rejects a missing or unsupported video URL without touching yt-dlp", async () => {
     const res = makeRes();
     await call(makeReq("/api/download?url=https://example.com/evil"), res);
 
     expect(res.writeHead).toHaveBeenCalledWith(400, expect.anything());
-    expect(downloadTweetVideoMock).not.toHaveBeenCalled();
+    expect(downloadVideoMock).not.toHaveBeenCalled();
     res.end();
   });
 
+  it("accepts a YouTube URL too", async () => {
+    downloadVideoMock.mockImplementation(async (_url, outputPath) => {
+      await writeFile(outputPath, "fake mp4 bytes");
+    });
+
+    const res = makeRes();
+    const url = encodeURIComponent("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    const done = collect(res);
+    await call(makeReq(`/api/download?url=${url}`), res);
+    await done;
+
+    expect(downloadVideoMock).toHaveBeenCalledWith(
+      "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      expect.any(String),
+    );
+    expect(res.writeHead).toHaveBeenCalledWith(200, expect.anything());
+  });
+
   it("streams the downloaded file with a safe filename and cleans up the temp file", async () => {
-    downloadTweetVideoMock.mockImplementation(async (_url, outputPath) => {
+    downloadVideoMock.mockImplementation(async (_url, outputPath) => {
       await writeFile(outputPath, "fake mp4 bytes");
     });
 
@@ -71,12 +89,12 @@ describe("GET /api/download", () => {
     expect(body.toString()).toBe("fake mp4 bytes");
 
     // the temp file used for the download must be removed once streamed
-    const outputPath = downloadTweetVideoMock.mock.calls[0][1];
+    const outputPath = downloadVideoMock.mock.calls[0][1];
     await vi.waitFor(() => expect(existsSync(outputPath)).toBe(false));
   });
 
   it("returns a 502 when the download itself fails", async () => {
-    downloadTweetVideoMock.mockRejectedValue(new Error("Requested format is not available"));
+    downloadVideoMock.mockRejectedValue(new Error("Requested format is not available"));
 
     const res = makeRes();
     const url = encodeURIComponent("https://x.com/a/status/1");
