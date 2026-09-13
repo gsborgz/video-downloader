@@ -1,0 +1,35 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { isTwitterStatusUrl } from "../lib/twitter";
+import { getVideoMeta } from "../lib/yt-dlp";
+import { readJsonBody, sendJson } from "../lib/http";
+
+export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { error: "Method not allowed." });
+    return;
+  }
+
+  let body: unknown;
+  try {
+    body = await readJsonBody(req);
+  } catch {
+    sendJson(res, 400, { error: "JSON inválido." });
+    return;
+  }
+
+  const url = typeof body === "object" && body !== null ? (body as { url?: unknown }).url : undefined;
+  if (typeof url !== "string" || !isTwitterStatusUrl(url)) {
+    sendJson(res, 400, {
+      error: "Informe um link válido de um post do Twitter/X (ex: https://x.com/usuario/status/123).",
+    });
+    return;
+  }
+
+  try {
+    const video = await getVideoMeta(url);
+    sendJson(res, 200, { video });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Erro desconhecido.";
+    sendJson(res, 502, { error: message });
+  }
+}

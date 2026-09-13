@@ -1,0 +1,12 @@
+{
+  "functions": {
+    "api/download.ts": {
+      "maxDuration": 60,
+      "includeFiles": "{bin/**,node_modules/ffmpeg-static/**}"
+    },
+    "api/info.ts": {
+      "maxDuration": 30,
+      "includeFiles": "bin/**"
+    }
+  }
+}
