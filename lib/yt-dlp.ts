@@ -36,6 +36,33 @@ const MAX_HEIGHT = 720;
 // fallbacks to still get *something* playable for those.
 const FORMAT_SELECTOR = `best[ext=mp4][height<=${MAX_HEIGHT}]/bestvideo[ext=mp4][height<=${MAX_HEIGHT}]+bestaudio[ext=m4a]/best[height<=${MAX_HEIGHT}]/best[ext=mp4]/best`;
 
+// YouTube increasingly requires a "Sign in to confirm you're not a bot" check for the
+// default "web" client, especially from datacenter IPs (which is what Vercel's
+// serverless functions use). Other player clients (mobile apps, TV) usually aren't
+// gated the same way, but also expose far fewer/lower-res formats (often just a single
+// old-style 360p file) — so we only reach for them as a fallback *after* the normal,
+// unrestricted request actually hits that specific bot check, instead of always paying
+// the quality cost up front. A no-op for non-YouTube URLs (e.g. Twitter/X).
+const YOUTUBE_EXTRACTOR_ARGS = ["--extractor-args", "youtube:player_client=android,tv,ios"];
+const BOT_CHECK_PATTERN = /sign in to confirm you.?re not a bot/i;
+
+async function runYtDlpWithFallback(
+  binPath: string,
+  baseArgs: string[],
+  videoUrl: string,
+  options: { maxBuffer: number; timeout: number },
+): Promise<{ stdout: string; stderr: string }> {
+  try {
+    return await execFileAsync(binPath, [...baseArgs, videoUrl], options);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!BOT_CHECK_PATTERN.test(message)) {
+      throw err;
+    }
+    return execFileAsync(binPath, [...baseArgs, ...YOUTUBE_EXTRACTOR_ARGS, videoUrl], options);
+  }
+}
+
 function resolveYtDlpPath(): string {
   const binName = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
   const binPath = path.join(process.cwd(), "bin", binName);
@@ -71,9 +98,10 @@ export interface VideoMeta {
 
 async function getFirstInfo(videoUrl: string): Promise<RawInfo> {
   const binPath = resolveYtDlpPath();
-  const { stdout } = await execFileAsync(
+  const { stdout } = await runYtDlpWithFallback(
     binPath,
-    ["-j", "--no-warnings", "--no-playlist", "--playlist-items", "1", videoUrl],
+    ["-j", "--no-warnings", "--no-playlist", "--playlist-items", "1"],
+    videoUrl,
     { maxBuffer: 1024 * 1024 * 20, timeout: 30_000 },
   );
 
@@ -124,7 +152,7 @@ export async function downloadVideo(videoUrl: string, outputPath: string): Promi
     throw new Error("ffmpeg binary not found (ffmpeg-static did not resolve a path).");
   }
 
-  await execFileAsync(
+  await runYtDlpWithFallback(
     binPath,
     [
       "-f",
@@ -140,8 +168,8 @@ export async function downloadVideo(videoUrl: string, outputPath: string): Promi
       "--no-progress",
       "-o",
       outputPath,
-      videoUrl,
     ],
+    videoUrl,
     { maxBuffer: 1024 * 1024 * 20, timeout: 55_000 },
   );
 

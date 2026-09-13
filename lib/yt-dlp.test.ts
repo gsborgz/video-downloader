@@ -111,6 +111,36 @@ describe("getVideoMeta", () => {
 
     await expect(getVideoMeta("https://x.com/a/status/1")).rejects.toThrow(/No video could be found/);
   });
+
+  it("retries with alternate player clients when YouTube's bot check blocks the default request", async () => {
+    let call = 0;
+    execFileMock.mockImplementation((_file, args, _options, callback) => {
+      call += 1;
+      if (call === 1) {
+        callback(
+          new Error(
+            "ERROR: [youtube] dQw4w9WgXcQ: Sign in to confirm you're not a bot. Use --cookies-from-browser...",
+          ),
+        );
+        return;
+      }
+      expect(args).toContain("--extractor-args");
+      callback(null, JSON.stringify({ id: "dQw4w9WgXcQ", title: "Never Gonna Give You Up", formats: [] }), "");
+    });
+
+    const result = await getVideoMeta("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    expect(result.title).toBe("Never Gonna Give You Up");
+    expect(execFileMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry for unrelated failures", async () => {
+    execFileMock.mockImplementation((_file, _args, _options, callback) => {
+      callback(new Error("ERROR: [youtube] dQw4w9WgXcQ: Video unavailable"));
+    });
+
+    await expect(getVideoMeta("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).rejects.toThrow(/Video unavailable/);
+    expect(execFileMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("downloadVideo", () => {
